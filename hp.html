@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pengumuman Sekolah</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header><div><h1>📢 Pengumuman Sekolah</h1><div class="sub">Kirim pengumuman ke speaker sekolah</div></div></header>
+<main>
+  <div id="gate" class="card">
+    <h2>Masukkan PIN</h2>
+    <input id="pin" type="password" inputmode="numeric" placeholder="PIN pengumum">
+    <div id="pinErr" class="mut" style="color:var(--red)"></div>
+    <div class="acts"><button class="btn" id="pinBtn">Masuk</button></div>
+  </div>
+
+  <div id="app" class="hidden">
+    <div id="localWarn" class="banner warn hidden">Supabase belum diisi di <code>config.js</code>, jadi rekaman &amp; pengumuman terjadwal belum bisa dikirim. Siaran langsung tetap bisa dicoba.</div>
+    <div class="tabs" id="tabs">
+      <button data-tab="rekam" class="on">🎙 Rekam</button>
+      <button data-tab="teks">⌨ Ketik (suara AI)</button>
+      <button data-tab="live">🔴 Langsung</button>
+    </div>
+
+    <!-- Info umum untuk rekam & teks -->
+    <div class="card" id="common">
+      <div class="row">
+        <div><label>Nama pengumum</label><input id="who" placeholder="mis. Ust. Ahmad"></div>
+        <div><label>Judul</label><input id="title" placeholder="mis. Info kegiatan Jumat"></div>
+        <div><label>Waktu diputar</label><input id="when" type="datetime-local"></div>
+      </div>
+      <label style="display:flex;gap:6px;align-items:center;color:var(--tx)"><input type="checkbox" id="bell" checked> Bunyi “ding-dong” sebelum pengumuman</label>
+      <div class="acts"><button class="btn sec sm" id="nowBtn">Putar secepatnya (±15 detik)</button></div>
+    </div>
+
+    <!-- Rekam -->
+    <section id="tab-rekam" class="card">
+      <h2>Rekam pengumuman</h2>
+      <div class="timer"><span class="dot" id="recDot"></span><span id="recTime">00:00</span></div>
+      <div class="acts" style="justify-content:center">
+        <button class="btn big" id="recBtn">⏺ Mulai Rekam</button>
+      </div>
+      <audio id="preview" controls class="hidden" style="width:100%;margin-top:12px"></audio>
+      <div class="acts"><button class="btn" id="sendRec" disabled>Jadwalkan Rekaman</button><button class="btn sec" id="discard" disabled>Buang</button></div>
+    </section>
+
+    <!-- Teks -->
+    <section id="tab-teks" class="card hidden">
+      <h2>Pengumuman teks (dibacakan suara AI)</h2>
+      <textarea id="text" style="min-height:120px" placeholder="Ketik isi pengumuman…"></textarea>
+      <div class="acts"><button class="btn" id="sendText">Jadwalkan Teks</button></div>
+    </section>
+
+    <!-- Live -->
+    <section id="tab-live" class="card hidden">
+      <h2>Siaran langsung</h2>
+      <p class="mut">Suara Anda langsung keluar di speaker sekolah. PC bel harus aktif. Setelah tersambung akan terdengar “ding-dong”, tunggu aba-aba <b>ON AIR</b> lalu bicara.</p>
+      <div class="timer" id="liveState">Belum tersambung</div>
+      <div class="acts" style="justify-content:center">
+        <button class="btn big" id="liveBtn">🔴 Mulai Siaran Langsung</button>
+        <button class="btn big red hidden" id="liveStop">⏹ Akhiri</button>
+      </div>
+    </section>
+
+    <div class="card">
+      <h2>Pengumuman saya yang menunggu</h2>
+      <table><thead><tr><th>Waktu</th><th>Judul</th><th></th></tr></thead><tbody id="mine"></tbody></table>
+    </div>
+  </div>
+</main>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="common.js"></script>
+<script>
+const C = window.BEL_CONFIG;
+const $ = (s) => document.querySelector(s);
+const pad = (n) => String(n).padStart(2, "0");
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const toLocalInput = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+// ----- PIN -----
+function open_() {
+  $("#gate").classList.add("hidden"); $("#app").classList.remove("hidden");
+  if (!DB.remote) $("#localWarn").classList.remove("hidden");
+  $("#who").value = localStorage.getItem("bel_who") || "";
+  $("#when").value = toLocalInput(new Date(Date.now() + 5 * 60000));
+  loadMine();
+}
+if (!C.PIN || sessionStorage.getItem("bel_ok") === "1") open_();
+$("#pinBtn").onclick = () => {
+  if ($("#pin").value === String(C.PIN)) { sessionStorage.setItem("bel_ok", "1"); open_(); }
+  else $("#pinErr").textContent = "PIN salah.";
+};
+$("#pin").onkeydown = (e) => { if (e.key === "Enter") $("#pinBtn").click(); };
+
+// ----- Tab -----
+document.querySelectorAll("#tabs button").forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
+    ["rekam", "teks", "live"].forEach((t) => $("#tab-" + t).classList.toggle("hidden", t !== b.dataset.tab));
+    $("#common").classList.toggle("hidden", b.dataset.tab === "live");
+  };
+});
+$("#nowBtn").onclick = () => { $("#when").value = toLocalInput(new Date(Date.now() + 20000)); };
+
+// ----- Rekam -----
+let rec, chunks = [], blob = null, stream, timerIv, t0;
+function setRecUI(recording) {
+  $("#recDot").className = "dot" + (recording ? " rec" : "");
+  $("#recBtn").textContent = recording ? "⏹ Berhenti" : "⏺ Rekam Ulang";
+}
+$("#recBtn").onclick = async () => {
+  if (rec && rec.state === "recording") { rec.stop(); return; }
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+  } catch (e) { return alert("Mikrofon tidak bisa diakses. Pastikan izin mikrofon diberikan dan halaman dibuka lewat HTTPS."); }
+  chunks = []; blob = null;
+  const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "";
+  rec = new MediaRecorder(stream, mime ? { mimeType: mime } : {});
+  rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+  rec.onstop = () => {
+    clearInterval(timerIv); stream.getTracks().forEach((t) => t.stop());
+    blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+    $("#preview").src = URL.createObjectURL(blob); $("#preview").classList.remove("hidden");
+    $("#sendRec").disabled = !DB.remote; $("#discard").disabled = false; setRecUI(false);
+  };
+  rec.start(); t0 = Date.now(); setRecUI(true);
+  $("#preview").classList.add("hidden"); $("#sendRec").disabled = true;
+  timerIv = setInterval(() => { const s = Math.floor((Date.now() - t0) / 1000); $("#recTime").textContent = pad(Math.floor(s / 60)) + ":" + pad(s % 60); }, 500);
+};
+$("#discard").onclick = () => {
+  blob = null; $("#preview").classList.add("hidden"); $("#sendRec").disabled = true; $("#discard").disabled = true;
+  $("#recTime").textContent = "00:00"; $("#recBtn").textContent = "⏺ Mulai Rekam";
+};
+
+function baseRow() {
+  const when = new Date($("#when").value);
+  if (isNaN(when)) { alert("Isi waktu diputar."); return null; }
+  if (when < new Date(Date.now() - 60000)) { alert("Waktu sudah lewat. Pilih waktu yang akan datang."); return null; }
+  localStorage.setItem("bel_who", $("#who").value);
+  return {
+    title: $("#title").value.trim() || "Pengumuman",
+    announcer: $("#who").value.trim() || "-",
+    play_at: when.toISOString(),
+    bell: $("#bell").checked,
+    played: false,
+  };
+}
+$("#sendRec").onclick = async () => {
+  if (!blob) return;
+  const row = baseRow(); if (!row) return;
+  $("#sendRec").disabled = true; $("#sendRec").textContent = "Mengunggah…";
+  try {
+    row.audio_path = await DB.upload(blob);
+    await DB.save("announcements", row);
+    alert("Terjadwal ✓ — akan diputar " + new Date(row.play_at).toLocaleString("id-ID"));
+    $("#discard").click(); $("#title").value = ""; loadMine();
+  } catch (e) { alert("Gagal mengirim: " + e.message); $("#sendRec").disabled = false; }
+  $("#sendRec").textContent = "Jadwalkan Rekaman";
+};
+$("#sendText").onclick = async () => {
+  const text = $("#text").value.trim();
+  if (!text) return alert("Ketik isi pengumuman.");
+  if (!DB.remote) return alert("Supabase belum diisi di config.js.");
+  const row = baseRow(); if (!row) return;
+  row.text_message = text;
+  try { await DB.save("announcements", row); alert("Terjadwal ✓"); $("#text").value = ""; $("#title").value = ""; loadMine(); }
+  catch (e) { alert("Gagal mengirim: " + e.message); }
+};
+
+// ----- Daftar milik saya -----
+async function loadMine() {
+  if (!DB.remote) { $("#mine").innerHTML = `<tr><td colspan="3" class="mut">—</td></tr>`; return; }
+  try {
+    const all = await DB.list("announcements", "play_at");
+    const rows = all.filter((a) => !a.played && new Date(a.play_at) > new Date());
+    $("#mine").innerHTML = rows.length
+      ? rows.map((a) => `<tr><td>${new Date(a.play_at).toLocaleString("id-ID", { dateStyle: "short", timeStyle: "short" })}</td><td>${esc(a.title)}<div class="mut">${esc(a.announcer)}</div></td><td><button class="btn red sm" data-id="${a.id}">Batal</button></td></tr>`).join("")
+      : `<tr><td colspan="3" class="mut">Tidak ada.</td></tr>`;
+  } catch (e) { $("#mine").innerHTML = `<tr><td colspan="3" class="mut">Gagal memuat: ${esc(e.message)}</td></tr>`; }
+}
+$("#mine").onclick = async (e) => {
+  const b = e.target.closest("button[data-id]"); if (!b || !confirm("Batalkan pengumuman ini?")) return;
+  const all = await DB.list("announcements", "play_at"); const a = all.find((x) => x.id === b.dataset.id);
+  if (a) { await DB.removeAudio(a.audio_path); await DB.del("announcements", a.id); }
+  loadMine();
+};
+
+// ----- Siaran langsung -----
+let peer, call, lstream, liveIv;
+function setLive(msg) { $("#liveState").textContent = msg; }
+function stopLive(msg) {
+  clearInterval(liveIv);
+  try { call && call.close(); } catch (e) {}
+  try { peer && peer.destroy(); } catch (e) {}
+  if (lstream) lstream.getTracks().forEach((t) => t.stop());
+  call = peer = lstream = null;
+  $("#liveBtn").classList.remove("hidden"); $("#liveStop").classList.add("hidden");
+  setLive(msg || "Siaran berakhir");
+}
+$("#liveBtn").onclick = async () => {
+  if (!window.Peer) return alert("Komponen siaran langsung gagal dimuat. Periksa koneksi internet.");
+  try { lstream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch (e) { return setLive("Mikrofon ditolak / tidak tersedia (butuh HTTPS)"); }
+  lstream.getAudioTracks().forEach((t) => (t.enabled = false));
+  $("#liveBtn").classList.add("hidden"); $("#liveStop").classList.remove("hidden");
+  setLive("Menghubungi PC bel…");
+  peer = new Peer();
+  peer.on("open", () => {
+    call = peer.call("bel-" + C.ROOM, lstream);
+    call.on("close", () => stopLive("Siaran berakhir (atau PC bel belum diaktifkan)"));
+    let n = 4; setLive("Bersiap… " + n);
+    liveIv = setInterval(() => {
+      n--;
+      if (n > 0) setLive("Bersiap… " + n);
+      else { clearInterval(liveIv); lstream && lstream.getAudioTracks().forEach((t) => (t.enabled = true)); setLive("🔴 ON AIR — silakan bicara"); }
+    }, 1000);
+  });
+  peer.on("error", (e) => stopLive(e.type === "peer-unavailable" ? "PC bel belum aktif / offline" : "Gagal tersambung: " + e.type));
+};
+$("#liveStop").onclick = () => stopLive("Siaran diakhiri");
+</script>
+</body>
+</html>

@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bel Sekolah Otomatis</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div>
+    <h1>🔔 Bel Sekolah Otomatis</h1>
+    <div class="sub" id="next">Memuat jadwal…</div>
+  </div>
+  <div style="text-align:right">
+    <div class="clock" id="clock">--:--:--</div>
+    <div class="sub" id="date"></div>
+  </div>
+</header>
+
+<main>
+  <div id="startBox" class="banner warn">
+    <b>Sistem belum aktif.</b> Browser mewajibkan satu klik agar suara bisa berbunyi otomatis. Klik tombol di bawah, lalu biarkan halaman ini terbuka di PC yang tersambung ke speaker.
+    <div class="acts"><button class="btn big" id="btnStart">▶ Aktifkan Sistem Bel</button></div>
+  </div>
+  <div id="runBox" class="banner ok hidden">✅ Sistem bel <b>aktif</b>. Jangan tutup halaman ini dan jangan biarkan PC tidur. <span id="peerState"></span></div>
+  <div id="liveBox" class="banner live hidden">🔴 SIARAN LANGSUNG dari HP sedang berlangsung…</div>
+  <div id="localBox" class="banner warn hidden">Mode lokal: data hanya tersimpan di browser ini. Isi <code>config.js</code> dengan Supabase agar pengumuman rekaman dari HP berfungsi.</div>
+
+  <div class="tabs" id="tabs">
+    <button data-tab="jadwal" class="on">Jadwal Bel</button>
+    <button data-tab="pengumuman">Pengumuman HP</button>
+    <button data-tab="suara">Suara &amp; Bel</button>
+    <button data-tab="riwayat">Riwayat</button>
+  </div>
+
+  <!-- ========== JADWAL ========== -->
+  <section id="tab-jadwal">
+    <div class="card">
+      <h2 id="formTitle">Tambah Jadwal</h2>
+      <div class="mut">Isi cepat:
+        <button class="btn sec sm" data-tpl="masuk">Masuk</button>
+        <button class="btn sec sm" data-tpl="ganti">Pergantian Pelajaran</button>
+        <button class="btn sec sm" data-tpl="istirahat">Istirahat</button>
+        <button class="btn sec sm" data-tpl="pulang">Pulang</button>
+      </div>
+      <form id="form">
+        <input type="hidden" id="f-id">
+        <div class="row">
+          <div><label>Nama jadwal</label><input id="f-name" required placeholder="mis. Pergantian jam ke-2"></div>
+          <div><label>Jam</label><input id="f-time" type="time" required></div>
+          <div><label>Bunyi bel</label><select id="f-bell"></select></div>
+          <div><label>Ulang bel</label><select id="f-repeat"><option>1</option><option>2</option><option>3</option></select></div>
+        </div>
+        <label>Hari</label>
+        <div class="days" id="f-days"></div>
+        <label>Ucapan suara AI (kosongkan jika hanya bel)</label>
+        <textarea id="f-msg" placeholder="mis. Waktu istirahat telah tiba…"></textarea>
+        <div class="row">
+          <div><label>Suara</label><select id="f-voice"></select></div>
+          <div><label>&nbsp;</label><label style="display:flex;gap:6px;align-items:center;margin:0;color:var(--tx)"><input type="checkbox" id="f-enabled" checked> Jadwal aktif</label></div>
+        </div>
+        <div class="acts">
+          <button class="btn" type="submit">Simpan Jadwal</button>
+          <button class="btn sec" type="button" id="btnTest">🔊 Uji Sekarang</button>
+          <button class="btn sec" type="button" id="btnReset">Batal / Baru</button>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <h2>Daftar Jadwal</h2>
+      <table>
+        <thead><tr><th>Jam</th><th>Nama</th><th>Hari</th><th>Bel / Ucapan</th><th>Aktif</th><th></th></tr></thead>
+        <tbody id="schedBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ========== PENGUMUMAN ========== -->
+  <section id="tab-pengumuman" class="hidden">
+    <div class="card">
+      <h2>Tautan untuk HP pengumum</h2>
+      <p class="mut">Buka tautan ini di HP, masukkan PIN, lalu rekam / ketik / siarkan langsung.</p>
+      <input id="hpLink" readonly>
+      <div class="acts"><button class="btn sec sm" id="btnCopy">Salin tautan</button></div>
+    </div>
+    <div class="card">
+      <h2>Pengumuman Terjadwal</h2>
+      <table>
+        <thead><tr><th>Waktu putar</th><th>Judul</th><th>Pengumum</th><th>Jenis</th><th>Status</th><th></th></tr></thead>
+        <tbody id="annBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ========== SUARA ========== -->
+  <section id="tab-suara" class="hidden">
+    <div class="card">
+      <h2>Suara AI</h2>
+      <div id="noIdVoice" class="banner warn hidden">Tidak ditemukan suara Bahasa Indonesia di browser ini. Gunakan <b>Microsoft Edge</b> (ada suara AI alami “Gadis” dan “Ardi”) atau Chrome di Android.</div>
+      <div class="row">
+        <div><label>Suara bawaan</label><select id="s-voice"></select></div>
+        <div><label>Bel bawaan</label><select id="s-bell"></select></div>
+      </div>
+      <div class="mut" style="margin-top:10px">Gaya cepat:
+        <button class="btn sec sm" data-preset="tegas">Tegas</button>
+        <button class="btn sec sm" data-preset="ramah">Ramah</button>
+        <button class="btn sec sm" data-preset="santai">Santai</button>
+      </div>
+      <div class="row">
+        <div><label>Kecepatan: <b id="v-rate"></b></label><input type="range" id="s-rate" min="0.6" max="1.4" step="0.05"></div>
+        <div><label>Nada: <b id="v-pitch"></b></label><input type="range" id="s-pitch" min="0.5" max="1.6" step="0.05"></div>
+        <div><label>Volume: <b id="v-vol"></b></label><input type="range" id="s-vol" min="0.1" max="1" step="0.05"></div>
+      </div>
+      <label>Teks uji</label>
+      <input id="s-test" value="Perhatian, waktu istirahat telah tiba. Para santri dipersilakan beristirahat.">
+      <div class="acts">
+        <button class="btn" id="btnSaveSet">Simpan Pengaturan</button>
+        <button class="btn sec" id="btnTestVoice">🗣 Tes Suara</button>
+        <button class="btn sec" id="btnTestBell">🔔 Tes Bel</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ========== RIWAYAT ========== -->
+  <section id="tab-riwayat" class="hidden">
+    <div class="card"><h2>Riwayat (sesi ini)</h2><pre class="log" id="log">Belum ada aktivitas.</pre></div>
+  </section>
+</main>
+<audio id="liveAudio" autoplay></audio>
+
+<script src="config.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="common.js"></script>
+<script src="engine.js"></script>
+<script>
+const C = window.BEL_CONFIG;
+const $ = (s) => document.querySelector(s);
+const pad = (n) => String(n).padStart(2, "0");
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const DAYS = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+let schedules = [], anns = [], settings = {};
+let started = false;
+const fired = new Set();
+let logs = [];
+
+function log(m) {
+  logs.unshift(new Date().toLocaleTimeString("id-ID") + " — " + m);
+  logs = logs.slice(0, 80);
+  $("#log").textContent = logs.join("\n");
+}
+
+// ---------- Tab ----------
+document.querySelectorAll("#tabs button").forEach((b) => {
+  b.onclick = () => {
+    document.querySelectorAll("#tabs button").forEach((x) => x.classList.toggle("on", x === b));
+    ["jadwal", "pengumuman", "suara", "riwayat"].forEach((t) => $("#tab-" + t).classList.toggle("hidden", t !== b.dataset.tab));
+  };
+});
+
+// ---------- Template ucapan ----------
+const TPL = {
+  masuk: { name: "Bel Masuk", message: "Assalamu'alaikum. Waktu masuk kelas telah tiba. Para santri dimohon segera menuju kelas masing-masing." },
+  ganti: { name: "Pergantian Pelajaran", message: "Perhatian. Pelajaran telah berakhir. Saatnya pergantian jam pelajaran. Para ustadz dan ustadzah dipersilakan berganti kelas." },
+  istirahat: { name: "Istirahat", message: "Waktu istirahat telah tiba. Para santri dipersilakan beristirahat dan menjaga kebersihan." },
+  pulang: { name: "Bel Pulang", message: "Alhamdulillah, kegiatan belajar hari ini telah selesai. Para santri dipersilakan pulang dengan tertib. Wassalamu'alaikum." },
+};
+document.querySelectorAll("[data-tpl]").forEach((b) => {
+  b.onclick = () => {
+    const t = TPL[b.dataset.tpl];
+    $("#f-name").value = t.name;
+    $("#f-msg").value = t.message;
+  };
+});
+
+// ---------- Form jadwal ----------
+$("#f-days").innerHTML = [1, 2, 3, 4, 5, 6, 0].map((d) => `<label><input type="checkbox" class="dchk" value="${d}" ${d >= 1 && d <= 5 ? "checked" : ""}> ${DAYS[d]}</label>`).join("");
+const bellOpts = Object.entries(Engine.BELLS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join("");
+$("#f-bell").innerHTML = `<option value="">Ikuti bel bawaan</option>` + bellOpts;
+$("#s-bell").innerHTML = bellOpts;
+
+function resetForm() {
+  $("#form").reset();
+  $("#f-id").value = "";
+  $("#formTitle").textContent = "Tambah Jadwal";
+  document.querySelectorAll(".dchk").forEach((c) => (c.checked = +c.value >= 1 && +c.value <= 5));
+  $("#f-enabled").checked = true;
+}
+$("#btnReset").onclick = resetForm;
+
+function formData() {
+  return {
+    id: $("#f-id").value || undefined,
+    name: $("#f-name").value.trim(),
+    time: $("#f-time").value,
+    days: [...document.querySelectorAll(".dchk")].filter((c) => c.checked).map((c) => +c.value),
+    bell: $("#f-bell").value,
+    repeat: +$("#f-repeat").value,
+    message: $("#f-msg").value.trim(),
+    voice: $("#f-voice").value,
+    enabled: $("#f-enabled").checked,
+  };
+}
+$("#form").onsubmit = async (e) => {
+  e.preventDefault();
+  const d = formData();
+  if (!d.days.length) return alert("Pilih minimal satu hari.");
+  try {
+    await DB.save("schedules", d);
+    log("Jadwal disimpan: " + d.name + " " + d.time);
+    resetForm();
+    await refresh();
+  } catch (err) {
+    alert("Gagal menyimpan: " + err.message);
+  }
+};
+$("#btnTest").onclick = () => runSchedule(formData(), true);
+
+function renderSchedules() {
+  const rows = [...schedules].sort((a, b) => a.time.localeCompare(b.time));
+  $("#schedBody").innerHTML = rows.length
+    ? rows.map((s) => `<tr>
+      <td><b>${esc(s.time)}</b></td>
+      <td>${esc(s.name)}</td>
+      <td>${(s.days || []).map((d) => `<span class="pill">${DAYS[d]}</span>`).join("")}</td>
+      <td><span class="pill">${esc((Engine.BELLS[s.bell || settings.bell] || {}).label || "Bel")}${s.repeat > 1 ? " ×" + s.repeat : ""}</span>${s.message ? `<div class="mut">“${esc(s.message)}”</div>` : ""}</td>
+      <td><input type="checkbox" data-act="toggle" data-id="${s.id}" ${s.enabled ? "checked" : ""}></td>
+      <td style="white-space:nowrap">
+        <button class="btn sec sm" data-act="test" data-id="${s.id}">🔊</button>
+        <button class="btn sec sm" data-act="edit" data-id="${s.id}">Ubah</button>
+        <button class="btn red sm" data-act="del" data-id="${s.id}">Hapus</button>
+      </td></tr>`).join("")
+    : `<tr><td colspan="6" class="mut">Belum ada jadwal. Tambahkan di atas.</td></tr>`;
+}
+$("#schedBody").onclick = async (e) => {
+  const b = e.target.closest("[data-act]");
+  if (!b) return;
+  const s = schedules.find((x) => x.id === b.dataset.id);
+  if (!s) return;
+  if (b.dataset.act === "test") runSchedule(s, true);
+  if (b.dataset.act === "edit") {
+    $("#f-id").value = s.id; $("#f-name").value = s.name; $("#f-time").value = s.time;
+    $("#f-bell").value = s.bell || ""; $("#f-repeat").value = s.repeat || 1; $("#f-msg").value = s.message || "";
+    $("#f-voice").value = s.voice || ""; $("#f-enabled").checked = !!s.enabled;
+    document.querySelectorAll(".dchk").forEach((c) => (c.checked = (s.days || []).includes(+c.value)));
+    $("#formTitle").textContent = "Ubah Jadwal";
+    scrollTo({ top: 0, behavior: "smooth" });
+  }
+  if (b.dataset.act === "del" && confirm("Hapus jadwal “" + s.name + "”?")) { await DB.del("schedules", s.id); refresh(); }
+};
+$("#schedBody").onchange = async (e) => {
+  if (e.target.dataset.act !== "toggle") return;
+  const s = schedules.find((x) => x.id === e.target.dataset.id);
+  if (s) { await DB.save("schedules", { ...s, enabled: e.target.checked }); refresh(); }
+};
+
+// ---------- Eksekusi bel / pengumuman ----------
+function speakOpts(voice) {
+  return { voice: voice || settings.voice, rate: settings.rate, pitch: settings.pitch, volume: settings.volume };
+}
+function runSchedule(s, manual) {
+  log((manual ? "Uji: " : "Bel: ") + s.name);
+  Engine.enqueue(async () => {
+    await Engine.playBell(s.bell || settings.bell, s.repeat || 1);
+    if (s.message) await Engine.speak(s.message, speakOpts(s.voice));
+  });
+}
+function runAnnouncement(a, manual) {
+  log((manual ? "Putar manual: " : "Pengumuman: ") + a.title + (a.announcer ? " (" + a.announcer + ")" : ""));
+  Engine.enqueue(async () => {
+    if (a.bell !== false) await Engine.playBell("dingdong", 1);
+    if (a.audio_path) await Engine.playUrl(DB.audioUrl(a.audio_path), settings.volume);
+    else if (a.text_message) await Engine.speak(a.text_message, speakOpts(""));
+  });
+}
+
+// ---------- Pengumuman dari HP ----------
+function annStatus(a, now) {
+  if (a.played) return "Sudah diputar";
+  const t = new Date(a.play_at);
+  if (t > now) return "Menunggu";
+  return now - t < 15 * 60000 ? "Segera diputar" : "Terlewat";
+}
+function renderAnns() {
+  const now = new Date();
+  const rows = [...anns].sort((a, b) => new Date(b.play_at) - new Date(a.play_at));
+  $("#annBody").innerHTML = rows.length
+    ? rows.map((a) => `<tr>
+      <td>${new Date(a.play_at).toLocaleString("id-ID", { dateStyle: "medium", timeStyle: "short" })}</td>
+      <td>${esc(a.title)}</td><td>${esc(a.announcer)}</td>
+      <td>${a.audio_path ? "🎙 Rekaman" : "⌨ Teks (AI)"}</td>
+      <td>${annStatus(a, now)}</td>
+      <td style="white-space:nowrap"><button class="btn sec sm" data-act="play" data-id="${a.id}">▶</button>
+      <button class="btn red sm" data-act="del" data-id="${a.id}">Hapus</button></td></tr>`).join("")
+    : `<tr><td colspan="6" class="mut">Belum ada pengumuman.</td></tr>`;
+}
+$("#annBody").onclick = async (e) => {
+  const b = e.target.closest("[data-act]");
+  if (!b) return;
+  const a = anns.find((x) => x.id === b.dataset.id);
+  if (!a) return;
+  if (b.dataset.act === "play") { Engine.unlock(); runAnnouncement(a, true); }
+  if (b.dataset.act === "del" && confirm("Hapus pengumuman ini?")) {
+    await DB.removeAudio(a.audio_path); await DB.del("announcements", a.id); refresh();
+  }
+};
+$("#hpLink").value = location.href.replace(/[^/]*$/, "").replace(/\?.*$/, "") + "hp.html";
+$("#btnCopy").onclick = () => { navigator.clipboard.writeText($("#hpLink").value); $("#btnCopy").textContent = "Tersalin ✓"; };
+
+// ---------- Pengaturan suara ----------
+const PRESETS = { tegas: { rate: 0.9, pitch: 0.8 }, ramah: { rate: 1, pitch: 1.15 }, santai: { rate: 0.85, pitch: 1 } };
+document.querySelectorAll("[data-preset]").forEach((b) => {
+  b.onclick = () => { const p = PRESETS[b.dataset.preset]; $("#s-rate").value = p.rate; $("#s-pitch").value = p.pitch; syncLabels(); };
+});
+function syncLabels() { $("#v-rate").textContent = $("#s-rate").value; $("#v-pitch").textContent = $("#s-pitch").value; $("#v-vol").textContent = Math.round($("#s-vol").value * 100) + "%"; }
+["#s-rate", "#s-pitch", "#s-vol"].forEach((id) => ($(id).oninput = syncLabels));
+
+function voiceOptions(first) {
+  const v = Engine.voices();
+  const idv = v.filter((x) => /^id/i.test(x.lang)), other = v.filter((x) => !/^id/i.test(x.lang));
+  const o = (x) => `<option value="${esc(x.name)}">${esc(x.name)} (${x.lang})</option>`;
+  $("#noIdVoice").classList.toggle("hidden", idv.length > 0);
+  return first + (idv.length ? `<optgroup label="Bahasa Indonesia">${idv.map(o).join("")}</optgroup>` : "") + (other.length ? `<optgroup label="Lainnya">${other.map(o).join("")}</optgroup>` : "");
+}
+function fillSettings() {
+  $("#s-voice").innerHTML = voiceOptions(`<option value="">Default sistem</option>`);
+  $("#f-voice").innerHTML = voiceOptions(`<option value="">Ikuti suara bawaan</option>`);
+  $("#s-voice").value = settings.voice || ""; $("#s-bell").value = settings.bell;
+  $("#s-rate").value = settings.rate; $("#s-pitch").value = settings.pitch; $("#s-vol").value = settings.volume;
+  syncLabels();
+}
+function readSettings() {
+  return { voice: $("#s-voice").value, bell: $("#s-bell").value, rate: +$("#s-rate").value, pitch: +$("#s-pitch").value, volume: +$("#s-vol").value };
+}
+$("#btnSaveSet").onclick = async () => {
+  settings = readSettings(); Engine.setVolume(settings.volume);
+  await DB.saveSettings(settings); log("Pengaturan suara disimpan"); $("#btnSaveSet").textContent = "Tersimpan ✓";
+  setTimeout(() => ($("#btnSaveSet").textContent = "Simpan Pengaturan"), 1500);
+};
+$("#btnTestVoice").onclick = () => { Engine.unlock(); const s = readSettings(); Engine.setVolume(s.volume); Engine.speak($("#s-test").value, s); };
+$("#btnTestBell").onclick = () => { Engine.unlock(); Engine.setVolume(+$("#s-vol").value); Engine.playBell($("#s-bell").value, 1); };
+
+// ---------- Siaran langsung dari HP (WebRTC via PeerJS) ----------
+let peer;
+function startPeer() {
+  if (!window.Peer) { $("#peerState").textContent = "(siaran langsung tidak tersedia: PeerJS gagal dimuat)"; return; }
+  peer = new Peer("bel-" + C.ROOM);
+  peer.on("open", () => ($("#peerState").textContent = "Siaran langsung dari HP: siap."));
+  peer.on("error", (e) => {
+    $("#peerState").textContent = e.type === "unavailable-id" ? "Siaran langsung: kode ROOM sedang dipakai tab/PC lain." : "Siaran langsung error: " + e.type;
+  });
+  peer.on("call", (call) => {
+    if (!started) { call.answer(); call.close(); return; }
+    call.answer();
+    let ended = false;
+    const end = () => {
+      if (ended) return; ended = true;
+      $("#liveAudio").srcObject = null; Engine.live = false; $("#liveBox").classList.add("hidden"); log("Siaran langsung selesai");
+    };
+    call.on("stream", (stream) => {
+      Engine.live = true; $("#liveBox").classList.remove("hidden"); log("Siaran langsung dimulai");
+      Engine.playBell("dingdong", 1);
+      const a = $("#liveAudio"); a.srcObject = stream; a.volume = settings.volume || 1; a.play().catch(() => {});
+    });
+    call.on("close", end); call.on("error", end);
+    const pc = call.peerConnection;
+    if (pc) pc.oniceconnectionstatechange = () => { if (["disconnected", "failed", "closed"].includes(pc.iceConnectionState)) end(); };
+  });
+}
+
+// ---------- Mulai ----------
+$("#btnStart").onclick = async () => {
+  started = true; Engine.unlock(); Engine.setVolume(settings.volume ?? 1);
+  $("#startBox").classList.add("hidden"); $("#runBox").classList.remove("hidden");
+  try { if ("wakeLock" in navigator) { await navigator.wakeLock.request("screen"); } } catch (e) {}
+  startPeer();
+  log("Sistem bel diaktifkan");
+  Engine.enqueue(() => Engine.speak("Sistem bel sekolah aktif.", speakOpts("")));
+};
+document.addEventListener("visibilitychange", async () => {
+  if (started && document.visibilityState === "visible") { try { await navigator.wakeLock.request("screen"); } catch (e) {} }
+});
+
+// ---------- Jam & pemicu ----------
+function nextBell(now) {
+  let best = null;
+  for (let d = 0; d < 8 && !best; d++) {
+    const dt = new Date(now.getFullYear(), now.getMonth(), now.getDate() + d);
+    schedules.filter((s) => s.enabled && (s.days || []).includes(dt.getDay())).forEach((s) => {
+      const [h, m] = s.time.split(":").map(Number);
+      const t = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), h, m);
+      if (t > now && (!best || t < best.t)) best = { t, s };
+    });
+  }
+  return best;
+}
+function tick() {
+  const now = new Date();
+  $("#clock").textContent = pad(now.getHours()) + ":" + pad(now.getMinutes()) + ":" + pad(now.getSeconds());
+  $("#date").textContent = now.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  if (started) {
+    const hm = pad(now.getHours()) + ":" + pad(now.getMinutes());
+    schedules.filter((s) => s.enabled && s.time === hm && (s.days || []).includes(now.getDay())).forEach((s) => {
+      const k = s.id + "|" + now.toDateString() + "|" + hm;
+      if (!fired.has(k)) { fired.add(k); runSchedule(s); }
+    });
+    anns.filter((a) => !a.played && new Date(a.play_at) <= now && now - new Date(a.play_at) < 15 * 60000).forEach((a) => {
+      a.played = true;
+      DB.save("announcements", { ...a, played: true }).catch(() => {});
+      runAnnouncement(a);
+    });
+  }
+  const nb = nextBell(now);
+  if (nb) {
+    const mins = Math.max(0, Math.round((nb.t - now) / 60000));
+    $("#next").textContent = "Berikutnya: " + nb.s.name + " pukul " + nb.s.time + (mins < 120 ? " (" + mins + " menit lagi)" : "");
+  } else $("#next").textContent = "Belum ada jadwal aktif";
+}
+
+async function refresh() {
+  try {
+    schedules = await DB.list("schedules");
+    anns = await DB.list("announcements", "play_at");
+    const s = await DB.getSettings();
+    const first = !Object.keys(settings).length;
+    settings = s;
+    Engine.setVolume(settings.volume);
+    if (first) fillSettings();
+  } catch (e) { log("Gagal memuat data: " + e.message); return; }
+  renderSchedules(); renderAnns();
+}
+
+(async function init() {
+  if (!DB.remote) $("#localBox").classList.remove("hidden");
+  await Engine.loadVoices();
+  await refresh();
+  fillSettings();
+  tick(); setInterval(tick, 1000);
+  setInterval(refresh, 10000);
+})();
+</script>
+</body>
+</html>
